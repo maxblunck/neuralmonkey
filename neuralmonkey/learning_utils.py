@@ -157,7 +157,12 @@ def training_loop(tf_manager: TensorFlowManager,
             log_print("")
             log("Epoch {} begins".format(epoch_n), color="red")
 
-            train_dataset.shuffle()
+            '''
+            TODO: add option to choose shuffle/sorting
+            '''
+            #train_dataset.shuffle()
+            train_dataset.sort_by_curriculum()
+
             train_batched_datasets = train_dataset.batch_dataset(batch_size)
 
             if epoch_n == 1 and train_start_offset:
@@ -191,9 +196,16 @@ def training_loop(tf_manager: TensorFlowManager,
                         seen_instances, epoch_n, epochs, trainer_result,
                         train=True)
                     last_log_time = time.process_time()
+
                 else:
                     tf_manager.execute(batch_dataset, [trainer],
                                        train=True, summaries=False)
+
+                """
+                print train examples
+                """
+               # _print_examples(batch_dataset, train_outputs, num_examples=batch_size)
+
 
                 if _is_logging_time(step, val_period_batch,
                                     last_val_time, val_period_time):

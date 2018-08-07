@@ -21,7 +21,7 @@ def create_bins_by_sent_length(thresholds, parallel_data):
 def create_bins_by_vocab_rank(thresholds, parallel_data):
     # create bins by vocabulary rank
     ranks = dict.fromkeys(range(len(thresholds)))
-    vocab_path = "/Users/max/cl_bandit/cl_neuralmonkey/example/vocabs/target.vocab"
+    vocab_path = "../experiments/mle_curriculum/vocabs/target.vocab"
 
     # read vocab file and sort by ranks
     with open(vocab_path, encoding="utf-8") as vocab_file:

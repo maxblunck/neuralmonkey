@@ -1,77 +1,273 @@
-"""
-Curriculum learning
-"""
+#import pickle
 import random
+#import matplotlib 
+#import matplotlib.pyplot as plt
 
-def create_bins_by_sent_length(thresholds, parallel_data):
-    # create bins by target sentence length
-    bins = dict().fromkeys(range(len(thresholds)))
 
-    for sent_pair in parallel_data:
-        for i in range(len(thresholds)): #for threshold in thresholds:
-                if len(sent_pair[1]) <= thresholds[i]: # targent sent len <= threshold
-                    if bins[i] != None:
-                        bins[i].append(sent_pair)
-                    else:
-                        bins[i] = [sent_pair]
-                    break
+def sort_data(parallel_dataset, vocabulary, criterion='sent_len', level='word', side='target', thresholds=None, num_bins=5):
+    """
+    criterion: sent_len, vocab_rank
+    level: subword, word, ngram
+    side: source, target
+    """
+    if thresholds != None:
+        thresholds = [int(t) for t in thresholds.split(",")]
+
+    if criterion == 'sent_len':
+        bins = _bins_by_sent_length(parallel_dataset, side, num_bins)
+    elif criterion == 'vocab_rank':
+        bins = _bins_by_vocab_rank(parallel_dataset, vocabulary, side, thresholds=thresholds, num_bins=num_bins)
+
+    reassembled = _draw_from_bins(bins)
+
+    # checks
+    if reassembled == None:
+        return parallel_dataset
+    if len(reassembled) != len(parallel_dataset):
+        print("Unknown Error while sorting")
+        return parallel_dataset
+
+    return reassembled
+  
+
+def _draw_from_bins(bins):
+    """
+    reassemble complete corpus by iteratively (& uniformly) drawing from bins
+    """
+
+    #check for decreasing bin sizes
+    valid = all(len(bins[i]) >= len(bins[i+1]) for i in range(len(bins)-1))
+    if not valid:
+        print("\nWith given thresholds, bin size constraints are not met")
+        print("Data set has not been sorted.\nBin sizes:\n{}".format([len(el) for el in bins]))
+        return None
+
+    reassembled = []
+    thresholds = _calc_thresholds(bins)
+
+    # create pools to draw from, each pool contains samples from all the 
+    # allowed bins (up to its threshold)
+    pools = []
+    allowed_bins = [0]
+    for t in thresholds:
+        current_pool = []
+
+        for b in allowed_bins:
+            chunk = bins[b][:t]
+            current_pool += chunk
+            bins[b] = bins[b][t:]
+
+        pools.append(current_pool)
+        allowed_bins.append(allowed_bins[-1]+1)
+
+    # shuffle pools and flatten to full dataset
+    for pool in pools:
+        random.shuffle(pool)
+        for sent_pair in pool:
+            reassembled.append(sent_pair)
+
+    return reassembled
+
+
+def _calc_thresholds(bins):
+    """
+    a threshold determines the index for allowed bins from
+    which are drawn from, after which the next bin is allowed
+    """
+    thresholds = []
+    for i in range(len(bins)-1):
+        t = len(bins[i]) - len(bins[i+1])
+        thresholds.append(t)
+    thresholds.append(len(bins[-1]))
+
+    return thresholds
+
+
+def _auto_distribute_to_bins(parallel_corpus, num_bins):
+    """
+    distribute corpus to bins of descending sizes
+    num_bins: number of bins 
+    """
+    uniform_bin_sizes = [int(len(parallel_corpus)/num_bins)] * num_bins
+
+    # shift value: val by which first bin is multiplied,
+    # gets lowered to 0.5 for last bin
+    shift_val = 1.5 
+    
+    # calculate bin sizes
+    bin_sizes = uniform_bin_sizes
+    for index in range(len(uniform_bin_sizes)):
+        bin_sizes[index] = int(uniform_bin_sizes[index] * shift_val)
+        shift_val = shift_val - (1/(num_bins-1))
+
+    # add the ones to 1. bin that were lost by cutting decimals
+    bin_sizes[0] += len(parallel_corpus) - sum(bin_sizes)
+
+    # add data to bins
+    bins = []
+    start_point = 0
+    for end_point in bin_sizes:
+        data_chunk = parallel_corpus[start_point:(start_point+end_point)]
+        random.shuffle(data_chunk)
+        bins.append(data_chunk)
+        start_point = start_point + end_point
+
     return bins
 
 
-def create_bins_by_vocab_rank(thresholds, parallel_data):
-    # create bins by vocabulary rank
-    ranks = dict.fromkeys(range(len(thresholds)))
-    vocab_path = "../experiments/mle_curriculum/vocabs/target.vocab"
+def _bins_by_sent_length(parallel_corpus, side, num_bins):
+    """
+    returns parallel corpus sorted by either source or target side sentence length
+    """
+    if side == 'source':
+        sorted_data = sorted(parallel_corpus, key=lambda x: int(len(x[0])))
+    elif side == 'target':
+        sorted_data = sorted(parallel_corpus, key=lambda x: int(len(x[1])))
 
-    # read vocab file and sort by ranks
-    with open(vocab_path, encoding="utf-8") as vocab_file:
-        lines = vocab_file.readlines()[1:]
-        sorted_lines = sorted(lines, key=lambda x: int(x.split("\t")[1]))
-        sorted_lines.reverse()
-
-        print("Vocab size: {}".format(len(sorted_lines)))
-
-        # if the size of last rank is larger than the vocab
-        if thresholds[-1] > len(sorted_lines):
-            thresholds[-1] = len(sorted_lines)
-
-        for i in ranks.keys():
-            ranks[i] = sorted_lines[:thresholds[i]]
-            del sorted_lines[:thresholds[i]]
+    return _auto_distribute_to_bins(sorted_data, num_bins)
 
 
-    # print stats
-    for key in ranks.keys():
-        print("Rank: {}".format(key))
-        print("Size of rank: {}".format(len(ranks[key])))
-        if ranks[key] != []:
-            freq = [int(line.split("\t")[1]) for line in ranks[key]]
-            sample = random.choice(ranks[key]).split("\t")
-            print("Frequency range: {}:{}".format(max(freq), min(freq)))
-            print("Random sample: {}, {}\n".format(sample[0], sample[1]))
+def _bins_by_vocab_rank(parallel_corpus, vocab_path, side, thresholds=None, num_bins=None, print_stats=True):
+    """
+    sorts dataset according to "min word freq per bin" in thresholds
+    e.g: thresholds = [1000, 100, 10, 5, 0]
+    rank1: only sents with words that appear at least 1000 times
+    rank2: only sents with words that appear 1000-100 times 
 
-    word2rank = dict((v.split("\t")[0],k) for k in ranks for v in ranks[k])
+    - sents with unknown words are added to last rank 
+    - if no thresholds given, dataset is simply sorted by sents with high freq words first
+    """
 
-    bins = dict.fromkeys(ranks.keys())
+    vocab = _load_vocabulary(vocab_path)
+    word_to_rank = _create_word_ranks(vocab, thresholds) # dict: k=word, v=rank
 
-    for sent_pair in parallel_data:
+    if side == "source":
+        sorted_dataset = sorted(parallel_corpus, key=lambda x: _get_sent_rank(x[0], word_to_rank, thresholds))
+    elif side == "target":
+        sorted_dataset = sorted(parallel_corpus, key=lambda x: _get_sent_rank(x[1], word_to_rank, thresholds))
+
+    if thresholds != None:
+        bins = _create_vocab_rank_bins(sorted_dataset, side, word_to_rank, thresholds)
+    else:
+        bins = _auto_distribute_to_bins(sorted_dataset, num_bins)
+
+
+    # stats
+    if print_stats == True:
+
+        # auto thresholds
+        auto_thresholds = []
+        if thresholds == None:
+            for bin in bins:
+                min_b_freq = 999999
+                for pair in bin:
+                    freqs = [] #target!
+                    for word in pair[1]:
+                        try:
+                            freqs.append(vocab[word])
+                        except KeyError:
+                            freqs.append(1)
+                    min_s_freq = min(freqs)
+                    if min_s_freq < min_b_freq:
+                        min_b_freq = min_s_freq
+                auto_thresholds.append(min_b_freq)
+
+        print("Total size of dataset:")
+        print(len(sorted_dataset))
+        print("\nHighest word frequency:")
+        print(max(vocab.values()))       
+        print("\nGiven thresholds:")
+        print(thresholds)
+        print("\nAuto thresholds:")
+        print(auto_thresholds)    
+        print("\nBin sizes:")
+        print([len(bin) for bin in bins])
+        for i in range(len(bins)):
+            print("\nBin {}:\n size: {}\n example: {}\n".format(i, len(bins[i]), " ".join(random.choice(bins[i])[1])))
+
+    return bins
+
+
+def _create_vocab_rank_bins(sorted_dataset, side, word_to_rank, thresholds):
+    bins = dict()
+    for pair in sorted_dataset:
+        if side == 'source':
+            rank = _get_sent_rank(pair[0], word_to_rank, thresholds)
+        elif side == 'target':
+            rank = _get_sent_rank(pair[1], word_to_rank, thresholds)
         try:
-            sent_rank = get_max_rank(sent_pair[1], word2rank) #target sentence 
+            bins[rank].append(pair)
         except KeyError:
-            sent_rank = list(ranks.keys())[-1] # if word is not in vocabulary, add to last rank
+            bins[rank] = [pair]
 
-        if bins[sent_rank] != None:
-            bins[sent_rank].append(sent_pair)
-        else:
-            bins[sent_rank] = [sent_pair]
-
-    return bins, word2rank
+    return list(bins.values())
 
 
-def get_max_rank(sentence, word2rank):
-    sent_rank = 0
+def _get_sent_rank(sentence, word_to_rank, thresholds=None):
+    max_rank = 0
     for word in sentence:
-        word_rank = word2rank[word]
-        if word_rank > sent_rank:
-            sent_rank = word_rank
-    return sent_rank
+        try:
+            word_rank = word_to_rank[word]
+        except KeyError:
+            if thresholds != None:
+                return len(thresholds)-1
+            else:
+                return len(word_to_rank.values()) 
+        if word_rank > max_rank:
+            max_rank = word_rank
+    return max_rank
+
+
+def _create_word_ranks(vocab, thresholds=None):
+    """
+    smooth or discrete
+    """
+    ordered_vocab = sorted(vocab, key=vocab.get, reverse=True) # by desc freq
+    desc_frequencies = sorted(vocab.values(), reverse=True)
+    ranks = dict()
+
+    if thresholds != None:
+        for i in range(len(ordered_vocab)):
+            for t in thresholds:
+                if desc_frequencies[i] > t:
+                    ranks[ordered_vocab[i]] = thresholds.index(t)
+                    break
+    else:
+        for word in ordered_vocab:
+            ranks[word] = ordered_vocab.index(word)
+
+    return ranks
+
+
+def _load_vocabulary(path):
+    """
+    reads vocabulary file as saved by NM
+    returns dict with k=word, v=freq
+    """
+    vocab_dict = dict()
+    with open(path, encoding="utf-8") as vocab_file:
+        lines = vocab_file.readlines()[1:]
+        for line in lines:
+            splitted = line.split("\t")
+            vocab_dict[splitted[0]] = int(splitted[1].strip("\n")) # key: word, val: freq
+    return vocab_dict
+
+
+def _plot_stats(data, criterion):
+    if criterion == 'sent_len':
+        fig, ax = plt.subplots()
+        ax.plot(range(len(data)), [len(pair[1]) for pair in data])
+        ax.set(xlabel='data sample', ylabel='target length')
+        ax.grid()
+        fig.savefig("data_distribution.png")
+        plt.show()
+
+
+# if __name__ == '__main__':
+#     corpus_file = open("zipped_corpus.pickle", 'rb')
+#     corpus = pickle.load(corpus_file) # [([s1_fr],[s1_en]), ([s2_fr],[s2_en]), ...]
+
+#     #vocabulary = "source.vocab"
+#     vocabulary = "target.vocab"
+#     sort_data(corpus, vocabulary, criterion="vocab_rank", level="word", side="target", num_bins=7)#, thresholds=[78, 19, 5, 1, 0])
+

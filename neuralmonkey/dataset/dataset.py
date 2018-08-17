@@ -5,7 +5,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 from typeguard import check_argument_types
-from neuralmonkey.curriculum_learning import create_bins_by_vocab_rank
+from neuralmonkey.curriculum_learning import sort_data
 
 
 class Dataset(collections.Sized):
@@ -127,94 +127,14 @@ class Dataset(collections.Sized):
         for key, serie in zip(keys, list(zip(*zipped))):
             self._series[key] = serie
 
-    def sort_by_curriculum(self) -> None:
+    def sort_by_curriculum(self, config) -> None:
         """curriculum learning"""
         keys = list(self._series.keys()) # ['source', 'target']
         zipped = list(zip(*[self._series[k] for k in keys])) # [([s1_fr],[s1_en]), ([s2_fr],[s2_en]), ...]
 
-        #thresholds = [20, 40, 999, 10]
-        thresholds = [3000, 5000, 7000, 12000, 99999] # rank_size better name for vocab_rank
-        
-        #criterion = "tar_len"
-        #criterion = "vocab_rank"
-
-        #bins = create_bins_by_sent_length(thresholds, zipped)
-        bins, w2r = create_bins_by_vocab_rank(thresholds, zipped)
-
-        for b in bins.keys():
-            total_len=0
-            for s in bins[b]:
-                total_len += len(s[1])
-
-            print("Average sent len of bin {} = {}".format(b, total_len/len(bins[b])))
-        print("\n")  
-          
-        # determine sizes of bins and shuffle them
-        sizes = [] #[48, 42, 10]
-        for key in bins.keys():
-            if bins[key] != None:
-                sizes.append(len(bins[key]))
-                random.shuffle(bins[key])
-            else:
-                sizes.append(0)
-
-        # check for descending sizes of bins
-        valid = all(sizes[i] >= sizes[i+1] for i in range(len(sizes)-1))
-        if not valid:
-            print("\nWith given thresholds, the bin size requirements are not met. Bin sizes: {}".format(sizes))
-            print("Corpus has not been sorted.\n")
-            return
-
-        print("Thresholds for curriculum sorted bins: {}".format(thresholds))
-        print("Sizes of bins (sentences per bin): {}".format(sizes))
-
-        # remove empty bins             
-        for i in range(len(sizes)):
-            if sizes[i] == 0:
-                bins.pop(i)
-                print("Deleted empty bin nr. {}".format(i))
-    
-
-        # sort data into batchs, from which the data can sequentially be drawn from
-        current_limit_index = 0 
-        allowed_bins = [0] # at start, only first bin allowed
-        bin_index = 0
-        num_bins = len(bins.keys())
-        pools = []
-
-        for i in range(num_bins):
-            pool = [] # a pool contains sentences up to the next threshold from all allowed bins 
-
-            for bin_key in allowed_bins:
-                if i < num_bins - 1:
-                    pool.append(bins[bin_key][sizes[current_limit_index+1] : sizes[current_limit_index]])
-                else:
-                    pool.append(bins[bin_key][0 : sizes[current_limit_index]])
-
-            if bin_index < num_bins - 1:
-                bin_index += 1
-                allowed_bins.append(list(bins.keys())[bin_index])
-
-            if current_limit_index < len(sizes):
-                current_limit_index += 1
-
-            flat_list = [sent for sents in pool for sent in sents]
-            pools.append(flat_list)
-
-
-        # sequentially draw from shuffled batchs
-        sorted_data = []
-        for pool in pools:
-            random.shuffle(pool)
-            for sent_pair in pool:
-                sorted_data.append(sent_pair)
-
-
-        #for s in sorted_data:
-            #print([word2rank[word] for word in s[1]])
-         #   print(len(s[1]))
-            #print(get_max_rank(s[1], w2r))
-            #print("\n")
+        sorted_data = sort_data(zipped, config["vocab_path"], criterion=config["criterion"],
+                                level=config["level"], side=config["side"], num_bins=config["num_bins"],
+                                thresholds=config["thresholds"])
 
         for key, serie in zip(keys, list(zip(*sorted_data))):
             self._series[key] = serie

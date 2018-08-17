@@ -21,6 +21,8 @@ from neuralmonkey.tf_manager import TensorFlowManager
 from neuralmonkey.runners.base_runner import BaseRunner, ExecutionResult
 from neuralmonkey.trainers.generic_trainer import GenericTrainer
 
+from neuralmonkey.config.configuration import Configuration
+
 # pylint: disable=invalid-name
 Evaluation = Dict[str, float]
 SeriesName = str
@@ -154,14 +156,22 @@ def training_loop(tf_manager: TensorFlowManager,
     interrupt = None
     try:
         for epoch_n in range(1, epochs + 1):
-            log_print("")
-            log("Epoch {} begins".format(epoch_n), color="red")
 
             '''
-            TODO: add option to choose shuffle/sorting
+            TODO: better access to config file
             '''
-            #train_dataset.shuffle()
-            train_dataset.sort_by_curriculum()
+            config = Configuration()
+            config.load_file(log_directory+"/experiment.ini")
+            sorting = config.config_dict["train_dataset"]['sorting']
+    
+            if sorting == "curriculum":
+                train_dataset.sort_by_curriculum(config.config_dict["curriculum"])
+            else:
+                train_dataset.shuffle()
+            
+
+            log_print("")
+            log("Epoch {} begins".format(epoch_n), color="red")
 
             train_batched_datasets = train_dataset.batch_dataset(batch_size)
 

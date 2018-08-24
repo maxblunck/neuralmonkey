@@ -2,6 +2,7 @@
 import random
 #import matplotlib 
 #import matplotlib.pyplot as plt
+from neuralmonkey.logging import log
 
 
 def sort_data(parallel_dataset, vocabulary, criterion='sent_len', level='word', side='target', thresholds=None, num_bins=5):
@@ -24,7 +25,7 @@ def sort_data(parallel_dataset, vocabulary, criterion='sent_len', level='word', 
     if reassembled == None:
         return parallel_dataset
     if len(reassembled) != len(parallel_dataset):
-        print("Unknown Error while sorting")
+        log("Unknown Error while sorting")
         return parallel_dataset
 
     return reassembled
@@ -38,8 +39,8 @@ def _draw_from_bins(bins):
     #check for decreasing bin sizes
     valid = all(len(bins[i]) >= len(bins[i+1]) for i in range(len(bins)-1))
     if not valid:
-        print("\nWith given thresholds, bin size constraints are not met")
-        print("Data set has not been sorted.\nBin sizes:\n{}".format([len(el) for el in bins]))
+        log("\nWith given thresholds, bin size constraints are not met")
+        log("Data set has not been sorted.\nBin sizes:\n{}".format([len(el) for el in bins]))
         return None
 
     reassembled = []
@@ -172,18 +173,13 @@ def _bins_by_vocab_rank(parallel_corpus, vocab_path, side, thresholds=None, num_
                         min_b_freq = min_s_freq
                 auto_thresholds.append(min_b_freq)
 
-        print("Total size of dataset:")
-        print(len(sorted_dataset))
-        print("\nHighest word frequency:")
-        print(max(vocab.values()))       
-        print("\nGiven thresholds:")
-        print(thresholds)
-        print("\nAuto thresholds:")
-        print(auto_thresholds)    
-        print("\nBin sizes:")
-        print([len(bin) for bin in bins])
+        log("Total size of dataset: {}".format(len(sorted_dataset)))
+        log("\nHighest word frequency: {}".format(max(vocab.values())))     
+        log("\nGiven thresholds: {}".format(thresholds))
+        log("\nAuto thresholds: {}".format(auto_thresholds)) 
+        log("\nBin sizes: {}".format([len(bin) for bin in bins]))
         for i in range(len(bins)):
-            print("\nBin {}:\n size: {}\n example: {}\n".format(i, len(bins[i]), " ".join(random.choice(bins[i])[1])))
+            log("\nBin {}:\n size: {}\n example: {}\n".format(i, len(bins[i]), " ".join(random.choice(bins[i])[1])))
 
     return bins
 

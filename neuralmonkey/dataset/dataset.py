@@ -129,10 +129,7 @@ class Dataset(collections.Sized):
 
     def sort_by_curriculum(self, config) -> None:
         """curriculum learning"""
-        keys = list(self._series.keys()) # ['source', 'target']
-        zipped = list(zip(*[self._series[k] for k in keys])) # [([s1_fr],[s1_en]), ([s2_fr],[s2_en]), ...]
-
-        sorted_data = sort_data(zipped, config["vocab_path"], criterion=config["criterion"],
+        sorted_data, keys = sort_data(self._series, config["vocab_path"], criterion=config["criterion"],
                                 level=config["level"], side=config["side"], num_bins=config["num_bins"],
                                 thresholds=config["thresholds"])
 

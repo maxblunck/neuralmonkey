@@ -206,7 +206,7 @@ def training_loop(tf_manager: TensorFlowManager,
                         seen_instances, epoch_n, epochs, trainer_result,
                         train=True)
                     last_log_time = time.process_time()
-
+                    #_print_examples(batch_dataset, train_outputs, num_examples=batch_size)
                 else:
                     tf_manager.execute(batch_dataset, [trainer],
                                        train=True, summaries=False)

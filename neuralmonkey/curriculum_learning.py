@@ -5,30 +5,38 @@ import random
 from neuralmonkey.logging import log
 
 
-def sort_data(parallel_dataset, vocabulary, criterion='sent_len', level='word', side='target', thresholds=None, num_bins=5):
+def sort_data(data_series, vocabulary, criterion='sent_len', level='word', side='target', thresholds=None, num_bins=5):
     """
     criterion: sent_len, vocab_rank
     level: subword, word, ngram
     side: source, target
     """
+
+    if level == "word":
+        keys = ['source', 'target']
+    elif level == "subword":
+        keys = ['source', 'target', 'source_bpe', 'target_bpe']
+    else:
+        print("Error in level config")
+
+    zipped = list(zip(*[data_series[k] for k in keys])) # [([s1_fr],[s1_en],[s1_fr_bpe],[s1_en_bpe]), ([s2_fr],[s2_en]), ...]
+
     if thresholds != None:
         thresholds = [int(t) for t in thresholds.split(",")]
 
     if criterion == 'sent_len':
-        bins = _bins_by_sent_length(parallel_dataset, side, num_bins)
+        bins = _bins_by_sent_length(zipped, side, num_bins)
     elif criterion == 'vocab_rank':
-        bins = _bins_by_vocab_rank(parallel_dataset, vocabulary, side, thresholds=thresholds, num_bins=num_bins)
+        bins = _bins_by_vocab_rank(zipped, vocabulary, level, side, thresholds=thresholds, num_bins=num_bins)
 
     reassembled = _draw_from_bins(bins)
 
     # checks
-    if reassembled == None:
-        return parallel_dataset
-    if len(reassembled) != len(parallel_dataset):
+    if reassembled == None or (len(reassembled) != len(zipped)):
         log("Unknown Error while sorting")
-        return parallel_dataset
+        return zipped, keys
 
-    return reassembled
+    return reassembled, keys
   
 
 def _draw_from_bins(bins):
@@ -118,6 +126,7 @@ def _auto_distribute_to_bins(parallel_corpus, num_bins):
 
 def _bins_by_sent_length(parallel_corpus, side, num_bins):
     """
+    LEVEL TO BE IMPLEMENTED
     returns parallel corpus sorted by either source or target side sentence length
     """
     if side == 'source':
@@ -128,7 +137,7 @@ def _bins_by_sent_length(parallel_corpus, side, num_bins):
     return _auto_distribute_to_bins(sorted_data, num_bins)
 
 
-def _bins_by_vocab_rank(parallel_corpus, vocab_path, side, thresholds=None, num_bins=None, print_stats=True):
+def _bins_by_vocab_rank(parallel_corpus, vocab_path, level, side, thresholds=None, num_bins=None, print_stats=True):
     """
     sorts dataset according to "min word freq per bin" in thresholds
     e.g: thresholds = [1000, 100, 10, 5, 0]
@@ -143,15 +152,23 @@ def _bins_by_vocab_rank(parallel_corpus, vocab_path, side, thresholds=None, num_
     word_to_rank = _create_word_ranks(vocab, thresholds) # dict: k=word, v=rank
 
     if side == "source":
-        sorted_dataset = sorted(parallel_corpus, key=lambda x: _get_sent_rank(x[0], word_to_rank, thresholds))
+
+        if level == "word":
+            sorted_dataset = sorted(parallel_corpus, key=lambda x: _get_sent_rank(x[0], word_to_rank, thresholds))
+        elif level == "subword":
+            sorted_dataset = sorted(parallel_corpus, key=lambda x: _get_sent_rank(x[2], word_to_rank, thresholds))
+
     elif side == "target":
-        sorted_dataset = sorted(parallel_corpus, key=lambda x: _get_sent_rank(x[1], word_to_rank, thresholds))
+
+        if level == "word":
+            sorted_dataset = sorted(parallel_corpus, key=lambda x: _get_sent_rank(x[1], word_to_rank, thresholds))
+        elif level == "subword":
+            sorted_dataset = sorted(parallel_corpus, key=lambda x: _get_sent_rank(x[3], word_to_rank, thresholds))
 
     if thresholds != None:
         bins = _create_vocab_rank_bins(sorted_dataset, side, word_to_rank, thresholds)
     else:
         bins = _auto_distribute_to_bins(sorted_dataset, num_bins)
-
 
     # stats
     if print_stats == True:
@@ -163,7 +180,11 @@ def _bins_by_vocab_rank(parallel_corpus, vocab_path, side, thresholds=None, num_
                 min_b_freq = 999999
                 for pair in bin:
                     freqs = [] #target!
-                    for word in pair[1]:
+                    if level == "word":
+                        sent = pair[1]
+                    elif level == "subword":
+                        sent = pair[3]
+                    for word in sent:
                         try:
                             freqs.append(vocab[word])
                         except KeyError:
@@ -179,7 +200,10 @@ def _bins_by_vocab_rank(parallel_corpus, vocab_path, side, thresholds=None, num_
         log("\nAuto thresholds: {}".format(auto_thresholds)) 
         log("\nBin sizes: {}".format([len(bin) for bin in bins]))
         for i in range(len(bins)):
-            log("\nBin {}:\n size: {}\n example: {}\n".format(i, len(bins[i]), " ".join(random.choice(bins[i])[1])))
+            if level == "word":
+                log("\nBin {}:\n size: {}\n example: {}\n".format(i, len(bins[i]), " ".join(random.choice(bins[i])[1])))
+            elif level == "subword":
+                log("\nBin {}:\n size: {}\n example: {}\n".format(i, len(bins[i]), " ".join(random.choice(bins[i])[3])))
 
     return bins
 
@@ -187,10 +211,20 @@ def _bins_by_vocab_rank(parallel_corpus, vocab_path, side, thresholds=None, num_
 def _create_vocab_rank_bins(sorted_dataset, side, word_to_rank, thresholds):
     bins = dict()
     for pair in sorted_dataset:
+
         if side == 'source':
-            rank = _get_sent_rank(pair[0], word_to_rank, thresholds)
+
+            if level == "word":
+                rank = _get_sent_rank(pair[0], word_to_rank, thresholds)
+            elif level == "subword":
+                rank = _get_sent_rank(pair[2], word_to_rank, thresholds)
+
         elif side == 'target':
-            rank = _get_sent_rank(pair[1], word_to_rank, thresholds)
+
+            if level == "word":
+                rank = _get_sent_rank(pair[1], word_to_rank, thresholds)
+            elif level == "subword":
+                rank = _get_sent_rank(pair[3], word_to_rank, thresholds)
         try:
             bins[rank].append(pair)
         except KeyError:
@@ -230,6 +264,7 @@ def _create_word_ranks(vocab, thresholds=None):
                     break
     else:
         for word in ordered_vocab:
+            #print("{}: {}".format(word, vocab[word]))
             ranks[word] = ordered_vocab.index(word)
 
     return ranks

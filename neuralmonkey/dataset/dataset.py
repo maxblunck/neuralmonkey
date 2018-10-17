@@ -131,7 +131,7 @@ class Dataset(collections.Sized):
         """curriculum learning"""
         sorted_data, keys = sort_data(self._series, config["vocab_path"], criterion=config["criterion"],
                                 level=config["level"], side=config["side"], num_bins=config["num_bins"],
-                                thresholds=config["thresholds"])
+                                thresholds=config["thresholds"], normalize=config["normalize"])
 
         for key, serie in zip(keys, list(zip(*sorted_data))):
             self._series[key] = serie

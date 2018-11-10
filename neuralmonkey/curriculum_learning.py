@@ -2,7 +2,7 @@
 import random
 #import matplotlib 
 #import matplotlib.pyplot as plt
-from neuralmonkey.logging import log
+from logging import log
 
 
 def sort_data(data_series, vocabulary, criterion='sent_len', level='word', side='target', thresholds=None, num_bins=5, normalize=False):

@@ -72,7 +72,8 @@ if __name__ == '__main__':
 	out_dir = sys.argv[4]
 	num_bins = sys.argv[5]
 	mix = sys.argv[6]
-    normalize = sys.argv[7]
+    if sys.argv[7] == "True":
+        normalize = True 
 
 	dataset = load_dataset(source, target)
 	bins = _bins_by_vocab_rank(dataset, sort_vocabulary, level="word", side="target", num_bins=int(num_bins), normalize=normalize)

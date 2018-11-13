@@ -8,16 +8,16 @@ import sys, os
 from curriculum_learning import _bins_by_vocab_rank
 
 def load_dataset(source, target):
-	source_file = open(source)
-	target_file = open(target)
+    source_file = open(source)
+    target_file = open(target)
 
-	dataset = {}
-	dataset["source"] = [line.split() for line in source_file.readlines()]
-	dataset["target"] = [line.split() for line in target_file.readlines()]
+    dataset = {}
+    dataset["source"] = [line.split() for line in source_file.readlines()]
+    dataset["target"] = [line.split() for line in target_file.readlines()]
 
-	zipped = list(zip(*[dataset[k] for k in dataset.keys()]))
+    zipped = list(zip(*[dataset[k] for k in dataset.keys()]))
 
-	return zipped
+    return zipped
 
 def draw_from_bins(bins):
     """
@@ -66,38 +66,38 @@ def calc_thresholds(bins):
 
 
 if __name__ == '__main__':
-	source = sys.argv[1]
-	target = sys.argv[2]
-	sort_vocabulary = sys.argv[3]
-	out_dir = sys.argv[4]
-	num_bins = sys.argv[5]
-	mix = sys.argv[6]
+    source = sys.argv[1]
+    target = sys.argv[2]
+    sort_vocabulary = sys.argv[3]
+    out_dir = sys.argv[4]
+    num_bins = sys.argv[5]
+    mix = sys.argv[6]
     if sys.argv[7] == "True":
         normalize = True 
 
-	dataset = load_dataset(source, target)
-	bins = _bins_by_vocab_rank(dataset, sort_vocabulary, level="word", side="target", num_bins=int(num_bins), normalize=normalize)
+    dataset = load_dataset(source, target)
+    bins = _bins_by_vocab_rank(dataset, sort_vocabulary, level="word", side="target", num_bins=int(num_bins), normalize=normalize)
 
-	# each following bin has samples from the preceding ones 
-	if mix == "True":
-		bins = draw_from_bins(bins)
+    # each following bin has samples from the preceding ones 
+    if mix == "True":
+        bins = draw_from_bins(bins)
 
-	if not os.path.exists(out_dir):
-		os.makedirs(out_dir)
-	print("Writing files to: {} ...".format(out_dir))
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    print("Writing files to: {} ...".format(out_dir))
 
-	for i in range(len(bins)):
-		
-		outfile_source = open("{}/src_{}.txt".format(out_dir, i), "w")
-		outfile_target = open("{}/trg_{}.txt".format(out_dir, i), "w")
+    for i in range(len(bins)):
+        
+        outfile_source = open("{}/src_{}.txt".format(out_dir, i), "w")
+        outfile_target = open("{}/trg_{}.txt".format(out_dir, i), "w")
 
-		for sent in bins[i]:
-			outfile_source.write(" ".join(sent[0]))
-			outfile_source.write("\n")
+        for sent in bins[i]:
+            outfile_source.write(" ".join(sent[0]))
+            outfile_source.write("\n")
 
-			outfile_target.write(" ".join(sent[1]))
-			outfile_target.write("\n")
+            outfile_target.write(" ".join(sent[1]))
+            outfile_target.write("\n")
 
-	print("... Done!")
+    print("... Done!")
 
 
